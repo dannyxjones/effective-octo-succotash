@@ -15,6 +15,8 @@ class TouchscreenToggle:
         self.root.title("Legion Go Touchscreen Toggle")
         self.root.geometry("150x80")
         self.root.resizable(False, False)
+        
+        # Make window stay on top
         self.root.attributes('-topmost', True)
         
         self.touchscreen_enabled = True
@@ -22,6 +24,7 @@ class TouchscreenToggle:
         self.setup_ui()
         
     def setup_ui(self):
+        # Toggle button taking up whole window
         self.toggle_button = tk.Button(
             self.root,
             text="Push Me",
@@ -33,7 +36,7 @@ class TouchscreenToggle:
             bd=3
         )
         self.toggle_button.pack(fill=tk.BOTH, expand=True, padx=2, pady=2)
-    
+        
     def is_admin(self):
         try:
             return ctypes.windll.shell32.IsUserAnAdmin()
@@ -42,7 +45,6 @@ class TouchscreenToggle:
     
     def find_touchscreen_device(self):
         try:
-            # Method 1: Comprehensive search
             ps_script = '''
             Get-PnpDevice | Where-Object {
                 ($_.FriendlyName -like "*touch*" -or 
@@ -64,12 +66,12 @@ class TouchscreenToggle:
                 for i, line in enumerate(lines):
                     if "InstanceId" in line and "HID\\" in line:
                         instance_id = line.split(':')[-1].strip()
-                        # Check nearby lines for touchscreen confirmation
+                        # Look for friendly name in next few lines
                         for j in range(i+1, min(len(lines), i+5)):
                             if "FriendlyName" in lines[j] and ("touch" in lines[j].lower() or "input" in lines[j].lower()):
                                 return instance_id
             
-            # Method 2: Direct HID search
+            # Method 2: Try direct HID device search
             ps_script2 = '''
             Get-PnpDevice -Class "HIDClass" | Where-Object {
                 $_.InstanceId -like "*VID_3938*" -or
@@ -91,34 +93,40 @@ class TouchscreenToggle:
         except Exception as e:
             print(f"Error finding device: {e}")
         
-        # Fallback device ID
+        # Fallback: return the device ID from your error message
         return "HID\\VID_3938&PID_1311&MI_01&COL04&430"
     
     def toggle_touchscreen_method1(self, device_id):
-        """PowerShell Disable/Enable-PnpDevice method"""
         try:
-            cmd = ('Disable' if self.touchscreen_enabled else 'Enable') + f'-PnpDevice -InstanceId "{device_id}" -Confirm:$false'
+            if self.touchscreen_enabled:
+                cmd = f'Disable-PnpDevice -InstanceId "{device_id}" -Confirm:$false'
+            else:
+                cmd = f'Enable-PnpDevice -InstanceId "{device_id}" -Confirm:$false'
+            
             result = subprocess.run(
                 ['powershell', '-Command', cmd],
                 capture_output=True,
                 text=True,
                 timeout=15
             )
+            
             return result.returncode == 0, result.stderr
         except Exception as e:
             return False, str(e)
     
     def toggle_touchscreen_method2(self, device_id):
-        """PnpUtil command line method"""
         try:
-            cmd = f'pnputil /{"disable" if self.touchscreen_enabled else "enable"}-device "{device_id}"'
+            if self.touchscreen_enabled:
+                cmd = f'pnputil /disable-device "{device_id}"'
+            else:
+                cmd = f'pnputil /enable-device "{device_id}"'
+            
             result = subprocess.run(cmd, shell=True, capture_output=True, text=True, timeout=15)
             return result.returncode == 0, result.stderr
         except Exception as e:
             return False, str(e)
     
     def toggle_touchscreen_method3(self, device_id):
-        """Registry modification method"""
         try:
             if self.touchscreen_enabled:
                 cmd = f'''
@@ -143,60 +151,59 @@ class TouchscreenToggle:
             )
             
             if result.returncode == 0:
-                subprocess.run(
-                    ['powershell', '-Command', 'pnputil /scan-devices'],
-                    capture_output=True,
-                    timeout=10
-                )
+                subprocess.run(['powershell', '-Command', 'pnputil /scan-devices'], 
+                             capture_output=True, timeout=10)
             
             return result.returncode == 0, result.stderr
         except Exception as e:
             return False, str(e)
     
     def toggle_touchscreen(self):
-        def worker():
+        def toggle_worker():
             if not self.is_admin():
-                print("Error: Admin privileges required")
                 return
             
+            # Find device if not already found
             if not self.device_id:
                 self.device_id = self.find_touchscreen_device()
-                print(f"Found device ID: {self.device_id}")
             
             if not self.device_id:
-                print("Error: No touchscreen device found")
                 return
             
+            # Try multiple methods
             methods = [
-                ("PowerShell PnpDevice", self.toggle_touchscreen_method1),
+                ("PowerShell Disable-PnpDevice", self.toggle_touchscreen_method1),
                 ("PnpUtil", self.toggle_touchscreen_method2),
-                ("Registry", self.toggle_touchscreen_method3)
+                ("Registry Method", self.toggle_touchscreen_method3)
             ]
             
-            for name, method in methods:
-                success, error = method(self.device_id)
+            success = False
+            
+            for method_name, method_func in methods:
+                success, error = method_func(self.device_id)
                 if success:
-                    print(f"Success using {name} method")
-                    self.touchscreen_enabled = not self.touchscreen_enabled
-                    self.root.after(0, self.update_ui)
                     break
-                else:
-                    print(f"Failed with {name}: {error}")
+            
+            if success:
+                self.touchscreen_enabled = not self.touchscreen_enabled
+                self.root.after(0, self.update_button_color)
         
-        # Update UI immediately
+        # Change button appearance while processing
         self.toggle_button.config(bg="gray", text="...")
         
-        # Run in thread
-        threading.Thread(target=worker, daemon=True).start()
+        # Run in separate thread
+        thread = threading.Thread(target=toggle_worker)
+        thread.daemon = True
+        thread.start()
         
-        # Reset button text after timeout
+        # Reset button after 2 seconds
         self.root.after(2000, lambda: self.toggle_button.config(text="Push Me"))
     
-    def update_ui(self):
-        self.toggle_button.config(
-            bg="purple" if self.touchscreen_enabled else "red",
-            text="Push Me"
-        )
+    def update_button_color(self):
+        if self.touchscreen_enabled:
+            self.toggle_button.config(bg="purple")
+        else:
+            self.toggle_button.config(bg="red")
     
     def run(self):
         self.root.mainloop()
