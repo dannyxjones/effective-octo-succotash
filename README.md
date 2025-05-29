@@ -3,7 +3,8 @@ Run as admin
 push the button to turn on
 push the button again to turn off
 
-below is the code I compiled to a .exe
+below is the code I compiled to an .exe
+
 import tkinter as tk
 import subprocess
 import threading
@@ -16,7 +17,7 @@ class TouchscreenToggle:
         self.root.geometry("150x80")
         self.root.resizable(False, False)
         
-        # Make window stay on top
+      
         self.root.attributes('-topmost', True)
         
         self.touchscreen_enabled = True
@@ -24,7 +25,7 @@ class TouchscreenToggle:
         self.setup_ui()
         
     def setup_ui(self):
-        # Toggle button taking up whole window
+        
         self.toggle_button = tk.Button(
             self.root,
             text="Push Me",
@@ -71,7 +72,6 @@ class TouchscreenToggle:
                             if "FriendlyName" in lines[j] and ("touch" in lines[j].lower() or "input" in lines[j].lower()):
                                 return instance_id
             
-            # Method 2: Try direct HID device search
             ps_script2 = '''
             Get-PnpDevice -Class "HIDClass" | Where-Object {
                 $_.InstanceId -like "*VID_3938*" -or
@@ -93,7 +93,6 @@ class TouchscreenToggle:
         except Exception as e:
             print(f"Error finding device: {e}")
         
-        # Fallback: return the device ID from your error message
         return "HID\\VID_3938&PID_1311&MI_01&COL04&430"
     
     def toggle_touchscreen_method1(self, device_id):
@@ -163,14 +162,12 @@ class TouchscreenToggle:
             if not self.is_admin():
                 return
             
-            # Find device if not already found
             if not self.device_id:
                 self.device_id = self.find_touchscreen_device()
             
             if not self.device_id:
                 return
             
-            # Try multiple methods
             methods = [
                 ("PowerShell Disable-PnpDevice", self.toggle_touchscreen_method1),
                 ("PnpUtil", self.toggle_touchscreen_method2),
@@ -188,15 +185,12 @@ class TouchscreenToggle:
                 self.touchscreen_enabled = not self.touchscreen_enabled
                 self.root.after(0, self.update_button_color)
         
-        # Change button appearance while processing
         self.toggle_button.config(bg="gray", text="...")
         
-        # Run in separate thread
         thread = threading.Thread(target=toggle_worker)
         thread.daemon = True
         thread.start()
         
-        # Reset button after 2 seconds
         self.root.after(2000, lambda: self.toggle_button.config(text="Push Me"))
     
     def update_button_color(self):
